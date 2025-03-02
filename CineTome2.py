@@ -56,7 +56,10 @@ def handle_start(message):
         user_state.pop(chat_id)
 
     text = (
-        "Выбери функцию из меню и давай начнем"
+        "Скоро в Telegram: ваш личный помощник для управления фильмами и книгами!\n\n"
+        "Используйте команды или кнопки меню:\n"
+        "/add_movie, /add_book, /list_movies, /list_books, /recommend, /stats, /change_status\n\n"
+        "Или нажмите на нужную кнопку ниже:"
     )
     menu = create_main_menu()
     bot.reply_to(message, text, reply_markup=menu)
