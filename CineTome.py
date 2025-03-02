@@ -292,13 +292,20 @@ def callback_change_status(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("update_"))
 def callback_update_status(call):
     chat_id = call.message.chat.id
-    _, item_name, new_status = call.data.replace("__", " ")
+    parts = call.data.split("_")  # Разбиваем строку корректно
+
+    if len(parts) < 3:
+        bot.answer_callback_query(call.id, "Ошибка обновления статуса.")
+        return
+
+    _, item_name, new_status = parts[0], "_".join(parts[1:-1]), parts[-1]  # Собираем имя корректно
 
     status_map = {
-        "in_progress": "в процессе",
+        "in": "в процессе",  # исправленный ключ для "in_progress"
         "done": "уже посмотрел/прочитал"
     }
-    updated_status = status_map[new_status]
+    
+    updated_status = status_map.get(new_status, "неизвестный статус")  # Безопасный доступ к словарю
 
     for item in data["movies"] + data["books"]:
         if item["title"].lower() == item_name.lower():
@@ -307,6 +314,7 @@ def callback_update_status(call):
             break
 
     bot.answer_callback_query(call.id)
+
 if __name__ == '__main__':
     while True:
         try:
