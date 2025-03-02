@@ -262,59 +262,76 @@ def stats(message):
     )
     bot.send_message(message.chat.id, response)
 
-@bot.message_handler(commands=['change_status'])
-def change_status(message):
-    chat_id = message.chat.id
-    items = data["movies"] + data["books"]
-
-    if not items:
-        bot.send_message(chat_id, "Ваш список пуст.")
-        return
-
-    markup = types.InlineKeyboardMarkup()
-    for item in items:
-        callback_data = f"change_{item['title']}"
-        markup.add(types.InlineKeyboardButton(f"{item['title']} ({item['status']})", callback_data=callback_data))
-
-    bot.send_message(chat_id, "Выберите фильм или книгу для изменения статуса:", reply_markup=markup)
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith("change_"))
 def callback_change_status(call):
     chat_id = call.message.chat.id
-    item_name = call.data[len("change_"):]
+    item_name = call.data[len("change_"):].strip()
 
+    # Найдем элемент в списке
+    item = None
+    for i in data["movies"] + data["books"]:
+        if i["title"].strip().lower() == item_name.lower():
+            item = i
+            break
+
+    if not item:
+        bot.answer_callback_query(call.id, "Ошибка: элемент не найден.")
+        return
+
+    current_status = item["status"]
+
+    # Определяем, какие кнопки показывать в зависимости от текущего статуса
     markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("В процессе", callback_data=f"update_{item_name}_in_progress"))
-    markup.add(types.InlineKeyboardButton("Уже посмотрел/прочитал", callback_data=f"update_{item_name}_done"))
+    
+    if current_status == "в процессе":
+        markup.add(types.InlineKeyboardButton("Хочу посмотреть", callback_data=f"update_{item_name}_want"))
+        markup.add(types.InlineKeyboardButton("Уже посмотрел/прочитал", callback_data=f"update_{item_name}_done"))
+    elif current_status == "хочу посмотреть/прочитать":
+        markup.add(types.InlineKeyboardButton("В процессе", callback_data=f"update_{item_name}_in_progress"))
+        markup.add(types.InlineKeyboardButton("Уже посмотрел/прочитал", callback_data=f"update_{item_name}_done"))
+    elif current_status == "уже посмотрел/прочитал":
+        markup.add(types.InlineKeyboardButton("В процессе", callback_data=f"update_{item_name}_in_progress"))
+        markup.add(types.InlineKeyboardButton("Хочу посмотреть", callback_data=f"update_{item_name}_want"))
 
     bot.send_message(chat_id, f"Выберите новый статус для '{item_name}':", reply_markup=markup)
+
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("update_"))
 def callback_update_status(call):
     chat_id = call.message.chat.id
 
-    # Разбиваем строку по последнему символу "_" (чтобы корректно извлечь название)
-    last_underscore = call.data.rfind("_")  # Находим последнее вхождение "_"
+    # Найдем последний "_" для отделения названия от статуса
+    last_underscore = call.data.rfind("_")
     if last_underscore == -1:
         bot.answer_callback_query(call.id, "Ошибка обновления статуса.")
         return
 
-    item_name = call.data[7:last_underscore]  # Берем название (7 - длина "update_")
-    new_status = call.data[last_underscore + 1:]  # Берем статус
+    # Разбираем название и новый статус
+    item_name = call.data[7:last_underscore].strip()  # Берем название (7 - длина "update_")
+    new_status = call.data[last_underscore + 1:].strip()  # Берем статус
 
     status_map = {
+        "want": "хочу посмотреть/прочитать",
         "in_progress": "в процессе",
         "done": "уже посмотрел/прочитал"
     }
 
+    # Проверяем, является ли новый статус допустимым
     if new_status not in status_map:
         bot.answer_callback_query(call.id, "Ошибка: некорректный статус.")
         return
 
     updated_status = status_map[new_status]
 
+    # Логируем данные для отладки
+    print(f"Полученное название: {item_name}, новый статус: {updated_status}")
+    print("Доступные элементы:")
     for item in data["movies"] + data["books"]:
-        if item["title"].lower() == item_name.lower():
+        print(f"- {item['title']} (статус: {item['status']})")
+
+    # Ищем элемент в списке
+    for item in data["movies"] + data["books"]:
+        if item["title"].strip().lower() == item_name.lower():
             item["status"] = updated_status
             bot.send_message(chat_id, f"Статус '{item_name}' обновлен: {updated_status}")
             bot.answer_callback_query(call.id)
