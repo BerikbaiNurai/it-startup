@@ -292,7 +292,7 @@ def callback_change_status(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("update_"))
 def callback_update_status(call):
     chat_id = call.message.chat.id
-    _, item_name, new_status = call.data.split("_")
+    _, item_name, new_status = call.data.rpartition("_")
 
     status_map = {
         "in_progress": "в процессе",
