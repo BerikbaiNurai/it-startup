@@ -292,13 +292,15 @@ def callback_change_status(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("update_"))
 def callback_update_status(call):
     chat_id = call.message.chat.id
-    parts = call.data.split("_", 2)  # Разделяем строку максимум на 3 части
 
-    if len(parts) < 3:
+    # Разбиваем строку по последнему символу "_" (чтобы корректно извлечь название)
+    last_underscore = call.data.rfind("_")  # Находим последнее вхождение "_"
+    if last_underscore == -1:
         bot.answer_callback_query(call.id, "Ошибка обновления статуса.")
         return
 
-    _, item_name, new_status = parts  # item_name теперь корректно сохраняется
+    item_name = call.data[7:last_underscore]  # Берем название (7 - длина "update_")
+    new_status = call.data[last_underscore + 1:]  # Берем статус
 
     status_map = {
         "in_progress": "в процессе",
