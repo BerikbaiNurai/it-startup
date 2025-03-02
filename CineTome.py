@@ -292,28 +292,33 @@ def callback_change_status(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("update_"))
 def callback_update_status(call):
     chat_id = call.message.chat.id
-    parts = call.data.split("_")  # Разбиваем строку корректно
+    parts = call.data.split("_", 2)  # Разделяем строку максимум на 3 части
 
     if len(parts) < 3:
         bot.answer_callback_query(call.id, "Ошибка обновления статуса.")
         return
 
-    _, item_name, new_status = parts[0], "_".join(parts[1:-1]), parts[-1]  # Собираем имя корректно
+    _, item_name, new_status = parts  # item_name теперь корректно сохраняется
 
     status_map = {
-        "in": "в процессе",  # исправленный ключ для "in_progress"
+        "in_progress": "в процессе",
         "done": "уже посмотрел/прочитал"
     }
-    
-    updated_status = status_map.get(new_status, "неизвестный статус")  # Безопасный доступ к словарю
+
+    if new_status not in status_map:
+        bot.answer_callback_query(call.id, "Ошибка: некорректный статус.")
+        return
+
+    updated_status = status_map[new_status]
 
     for item in data["movies"] + data["books"]:
         if item["title"].lower() == item_name.lower():
             item["status"] = updated_status
             bot.send_message(chat_id, f"Статус '{item_name}' обновлен: {updated_status}")
-            break
+            bot.answer_callback_query(call.id)
+            return
 
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(call.id, "Ошибка: элемент не найден.")
 
 if __name__ == '__main__':
     while True:
