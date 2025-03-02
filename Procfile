@@ -1,1 +1,1 @@
-worker: python CineTome.py
+worker python CineTome.py
