@@ -6,6 +6,7 @@ from collections import Counter
 API_TOKEN = '8074690974:AAEydE9h-g7CLOB2udL02i0v4YDf43gCc2A'
 bot = telebot.TeleBot(API_TOKEN)
 
+# Словарь рекомендаций
 recommendation_db = {
     "фэнтези": [
         {"title": "Гарри Поттер и Тайная комната", "type": "movie"},
@@ -26,15 +27,22 @@ recommendation_db = {
     ]
 }
 
+# Хранилище данных
 data = {
     "movies": [],
     "books": []
 }
 
+# Состояния пользователей для пошагового добавления
 user_state = {}
 
+# Счетчик уникальных пользователей (по chat_id)
+unique_users = set()
+
 def create_main_menu():
+    """Создаем меню с кнопками."""
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    btn_start = types.KeyboardButton("Start")
     btn_add_movie = types.KeyboardButton("Add Movie")
     btn_add_book = types.KeyboardButton("Add Book")
     btn_list_movies = types.KeyboardButton("List Movies")
@@ -42,8 +50,8 @@ def create_main_menu():
     btn_recommend = types.KeyboardButton("Recommend")
     btn_stats = types.KeyboardButton("Stats")
     btn_change_status = types.KeyboardButton("Change Status")
-
-    markup.add(btn_add_movie, btn_add_book)
+    
+    markup.add(btn_start, btn_add_movie, btn_add_book)
     markup.add(btn_list_movies, btn_list_books)
     markup.add(btn_recommend, btn_stats)
     markup.add(btn_change_status)
@@ -51,22 +59,28 @@ def create_main_menu():
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    """Сброс состояния, учет уникального пользователя и приветственное сообщение с меню."""
     chat_id = message.chat.id
+    if chat_id not in unique_users:
+        unique_users.add(chat_id)
     if chat_id in user_state:
         user_state.pop(chat_id)
-
+        
     text = (
-        "Выбери функцию из меню и давай начнем"
+        "Выбери функцию из меню и давай начнем.\n"
+        f"Уникальных пользователей: {len(unique_users)}"
     )
     menu = create_main_menu()
     bot.reply_to(message, text, reply_markup=menu)
 
 @bot.message_handler(func=lambda msg: msg.text in [
-    "Add Movie", "Add Book", "List Movies", "List Books",
+    "Start", "Add Movie", "Add Book", "List Movies", "List Books",
     "Recommend", "Stats", "Change Status"
 ])
 def handle_menu_buttons(message):
-    if message.text == "Add Movie":
+    if message.text == "Start":
+        handle_start(message)
+    elif message.text == "Add Movie":
         handle_add_movie(message)
     elif message.text == "Add Book":
         handle_add_book(message)
@@ -83,6 +97,7 @@ def handle_menu_buttons(message):
 
 @bot.message_handler(commands=['add_movie'])
 def handle_add_movie(message):
+    """Запускаем процесс добавления фильма: ждем название."""
     chat_id = message.chat.id
     user_state[chat_id] = {
         "action": "movie",
@@ -92,6 +107,7 @@ def handle_add_movie(message):
 
 @bot.message_handler(commands=['add_book'])
 def handle_add_book(message):
+    """Запускаем процесс добавления книги: ждем название."""
     chat_id = message.chat.id
     user_state[chat_id] = {
         "action": "book",
@@ -101,9 +117,12 @@ def handle_add_book(message):
 
 @bot.message_handler(func=lambda msg: msg.text and not msg.text.startswith('/'), content_types=['text'])
 def handle_text(message):
+    """
+    Обрабатываем текст, если пользователь находится в режиме добавления.
+    Исключаем команды (начинающиеся с '/'), чтобы не путать логику.
+    """
     chat_id = message.chat.id
     state = user_state.get(chat_id)
-
     if not state:
         bot.send_message(chat_id, "Используйте /add_movie или /add_book (или меню) чтобы добавить элемент.")
         return
@@ -115,7 +134,6 @@ def handle_text(message):
         user_state[chat_id]["item_name"] = message.text.strip()
         user_state[chat_id]["step"] = "awaiting_genre"
         bot.send_message(chat_id, "Введите жанр:")
-
     elif step == "awaiting_genre":
         user_state[chat_id]["genre"] = message.text.strip().lower()
         user_state[chat_id]["step"] = "awaiting_status"
@@ -126,12 +144,14 @@ def handle_text(message):
         markup.add(types.InlineKeyboardButton("Уже посмотрел/прочитал", callback_data="status_done"))
 
         bot.send_message(chat_id, "Выберите статус:", reply_markup=markup)
+    else:
+        bot.send_message(chat_id, "Пожалуйста, выберите статус, нажав на кнопку ниже.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("status_"))
 def callback_status(call):
+    """Обработка выбора статуса при добавлении."""
     chat_id = call.message.chat.id
     state = user_state.get(chat_id)
-
     if not state:
         bot.answer_callback_query(call.id, "Ошибка. Попробуйте снова.")
         return
@@ -142,7 +162,6 @@ def callback_status(call):
         "status_done": "уже посмотрел/прочитал"
     }
     item_status = status_map[call.data]
-
     action = state["action"]
     item_name = state["item_name"]
     item_genre = state["genre"]
@@ -161,7 +180,6 @@ def callback_status(call):
             "status": item_status
         })
         bot.send_message(chat_id, f"Книга '{item_name}' добавлена.\nЖанр: {item_genre}, Статус: {item_status}")
-
     user_state.pop(chat_id, None)
     bot.answer_callback_query(call.id)
 
@@ -186,27 +204,20 @@ def list_books(message):
     bot.send_message(message.chat.id, response)
 
 def get_most_popular_genre():
-    """
-    Определяем самый популярный жанр у пользователя.
-    Если списки пусты, возвращаем None.
-    """
+    """Определяем самый популярный жанр у пользователя."""
     all_genres = []
     for movie in data["movies"]:
         all_genres.append(movie["genre"])
     for book in data["books"]:
         all_genres.append(book["genre"])
-
     if not all_genres:
         return None
-
     counter = Counter(all_genres)
     most_common = counter.most_common(1)[0][0]
     return most_common
 
 def user_has_item(title):
-    """
-    Проверяем, есть ли у пользователя элемент с таким названием.
-    """
+    """Проверяем, есть ли у пользователя элемент с таким названием."""
     for movie in data["movies"]:
         if movie["title"].lower() == title.lower():
             return True
@@ -217,24 +228,14 @@ def user_has_item(title):
 
 @bot.message_handler(commands=['recommend'])
 def recommend(message):
-    """
-    Расширенная логика рекомендаций:
-    1) Определяем самый популярный жанр у пользователя.
-    2) Берём из recommendation_db[жанр] элемент, которого нет у пользователя.
-    3) Если ничего не найдено, пробуем другой жанр или выводим, что рекомендаций нет.
-    """
+    """Расширенная логика рекомендаций."""
     popular_genre = get_most_popular_genre()
-
     if not popular_genre:
         bot.send_message(message.chat.id, "У вас пока нет фильмов или книг. Добавьте что-нибудь для рекомендаций.")
         return
-
     possible_recs = recommendation_db.get(popular_genre, [])
-
     filtered_recs = [item for item in possible_recs if not user_has_item(item["title"])]
-
     if filtered_recs:
-
         rec = filtered_recs[0]
         if rec["type"] == "movie":
             bot.send_message(message.chat.id, f"Рекомендуем фильм в жанре '{popular_genre}': {rec['title']}")
@@ -242,7 +243,6 @@ def recommend(message):
             bot.send_message(message.chat.id, f"Рекомендуем книгу в жанре '{popular_genre}': {rec['title']}")
     else:
         fallback_recs = recommendation_db.get("не указано", [])
-
         if fallback_recs:
             alt = fallback_recs[0]
             bot.send_message(message.chat.id,
@@ -266,47 +266,40 @@ def stats(message):
 def change_status(message):
     chat_id = message.chat.id
     items = data["movies"] + data["books"]
-
     if not items:
         bot.send_message(chat_id, "Ваш список пуст.")
         return
-
     markup = types.InlineKeyboardMarkup()
     for item in items:
         callback_data = f"change_{item['title']}"
         markup.add(types.InlineKeyboardButton(f"{item['title']} ({item['status']})", callback_data=callback_data))
-
     bot.send_message(chat_id, "Выберите фильм или книгу для изменения статуса:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("change_"))
 def callback_change_status(call):
     chat_id = call.message.chat.id
     item_name = call.data[len("change_"):]
-
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("В процессе", callback_data=f"update_{item_name}_in_progress"))
     markup.add(types.InlineKeyboardButton("Уже посмотрел/прочитал", callback_data=f"update_{item_name}_done"))
-
     bot.send_message(chat_id, f"Выберите новый статус для '{item_name}':", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("update_"))
 def callback_update_status(call):
     chat_id = call.message.chat.id
     _, item_name, new_status = call.data.split("_")
-
     status_map = {
         "in_progress": "в процессе",
         "done": "уже посмотрел/прочитал"
     }
     updated_status = status_map[new_status]
-
     for item in data["movies"] + data["books"]:
         if item["title"].lower() == item_name.lower():
             item["status"] = updated_status
             bot.send_message(chat_id, f"Статус '{item_name}' обновлен: {updated_status}")
             break
-
     bot.answer_callback_query(call.id)
+
 if __name__ == '__main__':
     while True:
         try:
